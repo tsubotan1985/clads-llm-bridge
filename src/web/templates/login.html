@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}Login - CLADS LLM Bridge{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-6 col-lg-4">
+            <div class="card mt-5">
+                <div class="card-header text-center">
+                    <h4><i class="fas fa-lock me-2"></i>Login</h4>
+                </div>
+                <div class="card-body">
+                    {% if error %}
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>{{ error }}
+                    </div>
+                    {% endif %}
+                    
+                    {% if errors %}
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <strong>Please correct the following errors:</strong>
+                        <ul class="mb-0 mt-2">
+                            {% for field, field_errors in errors.items() %}
+                                {% for error in field_errors %}
+                                    <li>{{ error }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
+                    
+                    <form method="post" action="/login">
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control {% if errors and errors.password %}is-invalid{% endif %}" 
+                                   id="password" name="password" required>
+                            {% if errors and errors.password %}
+                                <div class="invalid-feedback">
+                                    {% for error in errors.password %}
+                                        {{ error }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                            <div class="form-text">
+                                Default password: <code>Hakodate4</code>
+                            </div>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-sign-in-alt me-2"></i>Login
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

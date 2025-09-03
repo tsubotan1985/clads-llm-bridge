@@ -1,0 +1,55 @@
+services:
+  clads-llm-bridge:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: clads-llm-bridge
+    ports:
+      - "${WEB_UI_PORT:-4322}:${WEB_UI_PORT:-4322}"  # Web UI
+      - "${PROXY_PORT:-4321}:${PROXY_PORT:-4321}"    # Proxy server
+    volumes:
+      # Persistent data storage with named volume
+      - clads_data:/app/data
+      # Optional: Mount local data directory for development
+      # - ./data:/app/data
+    environment:
+      # Core application settings
+      - PYTHONPATH=/app
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - WEB_UI_PORT=${WEB_UI_PORT:-4322}
+      - PROXY_PORT=${PROXY_PORT:-4321}
+      - DATABASE_PATH=/app/data/clads_llm_bridge.db
+      - DATA_DIR=/app/data
+      - INITIAL_PASSWORD=${INITIAL_PASSWORD:-Hakodate4}
+      
+      # Optional: LiteLLM specific environment variables
+      - LITELLM_LOG=${LITELLM_LOG:-INFO}
+      - LITELLM_DROP_PARAMS=${LITELLM_DROP_PARAMS:-true}
+      
+      # Optional: API keys for external services
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      
+      # Optional: Security settings
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:-}
+      - ENCRYPTION_KEY_PATH=${ENCRYPTION_KEY_PATH:-/app/data/.encryption_key}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:${WEB_UI_PORT:-4322}/health && curl -f http://localhost:${PROXY_PORT:-4321}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Resource limits for production
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+
+# Named volumes for persistent data
+volumes:
+  clads_data:
+    driver: local

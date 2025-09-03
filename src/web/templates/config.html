@@ -1,0 +1,574 @@
+{% extends "base.html" %}
+
+{% block title %}Configuration - CLADS LLM Bridge{% endblock %}
+
+{% block extra_css %}
+<style>
+    .config-card {
+        border-left: 4px solid #007bff;
+    }
+    .config-card.disabled {
+        border-left-color: #6c757d;
+        opacity: 0.7;
+    }
+    .masked-key {
+        color: #28a745;
+        font-family: monospace;
+        font-weight: bold;
+    }
+    .model-loading {
+        display: none;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">LLM Service Configuration</h1>
+    <div class="btn-group">
+        <button class="btn btn-success" onclick="testAllConfigs()">
+            <i class="fas fa-heartbeat me-2"></i>Test All
+        </button>
+        <button class="btn btn-warning" onclick="reloadConfig()">
+            <i class="fas fa-sync-alt me-2"></i>Reload Config
+        </button>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#configModal" onclick="openNewConfigModal()">
+            <i class="fas fa-plus me-2"></i>Add New Service
+        </button>
+    </div>
+</div>
+
+<!-- Success/Error Messages -->
+{% if request.query_params.get('success') %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    <i class="fas fa-check-circle me-2"></i>
+    {% if request.query_params.get('success') == 'deleted' %}
+        Configuration deleted successfully.
+    {% else %}
+        Configuration saved successfully.
+    {% endif %}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+{% if validation_failed %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>Validation Failed:</strong> Please correct the errors below and try again.
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+{% if warnings %}
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    <strong>Warnings:</strong> Please review the warnings below.
+    <ul class="mb-0 mt-2">
+        {% for field, field_warnings in warnings.items() %}
+            {% for warning in field_warnings %}
+                <li>{{ field|title }}: {{ warning }}</li>
+            {% endfor %}
+        {% endfor %}
+    </ul>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+{% if request.query_params.get('error') %}
+<div class="alert alert-danger alert-dismissible fade show" role="alert">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    Error: {{ request.query_params.get('error') }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<!-- Configuration List -->
+<div class="row">
+    {% for config in configs %}
+    <div class="col-md-6 col-lg-4 mb-4">
+        <div class="card config-card {% if not config.enabled %}disabled{% endif %}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h6 class="mb-0">
+                    <i class="fas fa-cog me-2"></i>
+                    {{ config.service_type.value.replace('_', ' ').title() }}
+                </h6>
+                <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" 
+                           {% if config.enabled %}checked{% endif %}
+                           onchange="toggleConfig('{{ config.id }}')">
+                </div>
+            </div>
+            <div class="card-body">
+                <p class="card-text">
+                    <strong>Model:</strong> {{ config.model_name or 'Not configured' }}<br>
+                    <strong>Public Name:</strong> {{ config.public_name or 'Not set' }}<br>
+                    <strong>Base URL:</strong> <small>{{ config.base_url }}</small><br>
+                    <strong>API Key:</strong> 
+                    {% if config.api_key %}
+                        <span class="masked-key">{{ config.mask_api_key() }}</span>
+                    {% else %}
+                        <span class="text-muted">Not set</span>
+                    {% endif %}
+                </p>
+                <div class="mb-2">
+                    <div id="health-status-{{ config.id }}" class="health-status">
+                        <small class="text-muted">
+                            <i class="fas fa-clock me-1"></i>
+                            Health status not checked
+                        </small>
+                    </div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" 
+                            onclick="editConfig('{{ config.id }}')">
+                        <i class="fas fa-edit me-1"></i>Edit
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" 
+                            onclick="testConfig('{{ config.id }}')">
+                        <i class="fas fa-heartbeat me-1"></i>Test
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger" 
+                            onclick="deleteConfig('{{ config.id }}')">
+                        <i class="fas fa-trash me-1"></i>Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    
+    {% if not configs %}
+    <div class="col-12">
+        <div class="text-center py-5">
+            <i class="fas fa-cog fa-3x text-muted mb-3"></i>
+            <h4 class="text-muted">No LLM Services Configured</h4>
+            <p class="text-muted">Add your first LLM service to get started.</p>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#configModal" onclick="openNewConfigModal()">
+                <i class="fas fa-plus me-2"></i>Add Service
+            </button>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Configuration Modal -->
+<div class="modal fade" id="configModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form id="configForm" method="post" action="/config/save">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="configModalTitle">Add LLM Service</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="config_id" name="config_id" value="">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="service_type" class="form-label">Service Type</label>
+                                <select class="form-select" id="service_type" name="service_type" required onchange="updateBaseUrl()">
+                                    <option value="">Select a service...</option>
+                                    {% for service in service_types %}
+                                    <option value="{{ service.value }}">{{ service.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="base_url" class="form-label">Base URL</label>
+                                <input type="url" class="form-control" id="base_url" name="base_url" required>
+                                <div class="form-text">API endpoint URL for the service</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="api_key" class="form-label">API Key</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="api_key" name="api_key" placeholder="Enter API key...">
+                            <button class="btn btn-outline-secondary" type="button" onclick="toggleApiKeyVisibility()">
+                                <i class="fas fa-eye" id="apiKeyToggleIcon"></i>
+                            </button>
+                        </div>
+                        <div class="form-text">Leave empty to keep existing key when editing</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label for="model_name" class="form-label">Model Name</label>
+                                <div class="input-group">
+                                    <select class="form-select" id="model_name" name="model_name">
+                                        <option value="">Select or enter model name...</option>
+                                    </select>
+                                    <button class="btn btn-outline-primary" type="button" onclick="loadModels()" id="loadModelsBtn">
+                                        <i class="fas fa-download me-1"></i>Load Models
+                                    </button>
+                                </div>
+                                <div class="model-loading">
+                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                    Loading models...
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label for="public_name" class="form-label">Public Name</label>
+                                <input type="text" class="form-control" id="public_name" name="public_name" placeholder="Display name...">
+                                <div class="form-text">Name shown in API responses</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="enabled" name="enabled" checked>
+                        <label class="form-check-label" for="enabled">
+                            Enable this configuration
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save me-2"></i>Save Configuration
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Default base URLs from server
+const defaultBaseUrls = {{ default_base_urls | tojson }};
+
+// Configuration data for editing
+const configData = {{ configs_js | tojson }};
+
+function updateBaseUrl() {
+    const serviceType = document.getElementById('service_type').value;
+    const baseUrlInput = document.getElementById('base_url');
+    
+    if (serviceType && defaultBaseUrls[serviceType]) {
+        baseUrlInput.value = defaultBaseUrls[serviceType];
+    }
+}
+
+function toggleApiKeyVisibility() {
+    const apiKeyInput = document.getElementById('api_key');
+    const toggleIcon = document.getElementById('apiKeyToggleIcon');
+    
+    if (apiKeyInput.type === 'password') {
+        apiKeyInput.type = 'text';
+        toggleIcon.className = 'fas fa-eye-slash';
+    } else {
+        apiKeyInput.type = 'password';
+        toggleIcon.className = 'fas fa-eye';
+    }
+}
+
+function openNewConfigModal() {
+    document.getElementById('configModalTitle').textContent = 'Add LLM Service';
+    document.getElementById('configForm').reset();
+    document.getElementById('config_id').value = '';
+    document.getElementById('enabled').checked = true;
+}
+
+function editConfig(configId) {
+    const config = configData.find(c => c.id === configId);
+    if (!config) return;
+    
+    document.getElementById('configModalTitle').textContent = 'Edit LLM Service';
+    document.getElementById('config_id').value = config.id;
+    document.getElementById('service_type').value = config.service_type;
+    document.getElementById('base_url').value = config.base_url;
+    document.getElementById('api_key').placeholder = config.api_key ? 'API key is set (leave empty to keep)' : 'Enter API key...';
+    document.getElementById('model_name').innerHTML = `<option value="${config.model_name}" selected>${config.model_name}</option>`;
+    document.getElementById('public_name').value = config.public_name;
+    document.getElementById('enabled').checked = config.enabled;
+    
+    new bootstrap.Modal(document.getElementById('configModal')).show();
+}
+
+async function loadModels() {
+    const serviceType = document.getElementById('service_type').value;
+    const apiKey = document.getElementById('api_key').value;
+    const baseUrl = document.getElementById('base_url').value;
+    
+    if (!serviceType) {
+        alert('Please select a service type first');
+        return;
+    }
+    
+    const loadBtn = document.getElementById('loadModelsBtn');
+    const loading = document.querySelector('.model-loading');
+    const modelSelect = document.getElementById('model_name');
+    
+    // Show loading state
+    loadBtn.disabled = true;
+    loading.style.display = 'block';
+    
+    try {
+        const response = await fetch(`/api/models/${serviceType}?api_key=${encodeURIComponent(apiKey)}&base_url=${encodeURIComponent(baseUrl)}`);
+        const data = await response.json();
+        
+        if (data.error) {
+            alert('Error loading models: ' + data.error);
+        } else {
+            // Clear existing options
+            modelSelect.innerHTML = '<option value="">Select a model...</option>';
+            
+            // Add new options
+            data.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model;
+                option.textContent = model;
+                modelSelect.appendChild(option);
+            });
+        }
+    } catch (error) {
+        alert('Error loading models: ' + error.message);
+    } finally {
+        // Hide loading state
+        loadBtn.disabled = false;
+        loading.style.display = 'none';
+    }
+}
+
+function toggleConfig(configId) {
+    fetch(`/config/toggle/${configId}`, { method: 'POST' })
+        .then(() => location.reload())
+        .catch(error => alert('Error toggling configuration: ' + error.message));
+}
+
+function deleteConfig(configId) {
+    if (confirm('Are you sure you want to delete this configuration?')) {
+        fetch(`/config/delete/${configId}`, { method: 'POST' })
+            .then(() => location.reload())
+            .catch(error => alert('Error deleting configuration: ' + error.message));
+    }
+}
+
+async function testConfig(configId) {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    // Show loading state
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing...';
+    
+    try {
+        const response = await fetch(`/api/test-config/${configId}`, { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.error) {
+            alert('Health check failed: ' + result.error);
+        } else {
+            const statusText = result.status === 'OK' ? 'OK' : 'NG';
+            const statusColor = result.status === 'OK' ? 'green' : 'red';
+            const responseTime = result.response_time_ms ? ` (${result.response_time_ms}ms)` : '';
+            const modelCount = result.model_count ? ` - ${result.model_count} models` : '';
+            
+            let message = `Status: ${statusText}${responseTime}${modelCount}`;
+            if (result.error_message) {
+                message += `\nError: ${result.error_message}`;
+            }
+            
+            // Show result in a styled alert
+            const alertClass = result.status === 'OK' ? 'alert-success' : 'alert-danger';
+            const icon = result.status === 'OK' ? 'fa-check-circle' : 'fa-exclamation-triangle';
+            
+            showAlert(message, alertClass, icon);
+            
+            // Update the health status display for this config
+            const statusElement = document.getElementById(`health-status-${configId}`);
+            if (statusElement) {
+                const isHealthy = result.status === 'OK';
+                const statusColor = isHealthy ? 'text-success' : 'text-danger';
+                const statusIcon = isHealthy ? 'fa-check-circle' : 'fa-exclamation-triangle';
+                const responseTime = result.response_time_ms ? ` (${result.response_time_ms}ms)` : '';
+                const modelCount = result.model_count ? ` - ${result.model_count} models` : '';
+                
+                let statusText = `${result.status}${responseTime}${modelCount}`;
+                if (result.error_message && !isHealthy) {
+                    statusText += ` - ${result.error_message}`;
+                }
+                
+                statusElement.innerHTML = `
+                    <small class="${statusColor}">
+                        <i class="fas ${statusIcon} me-1"></i>
+                        ${statusText}
+                    </small>
+                `;
+            }
+        }
+    } catch (error) {
+        alert('Error testing configuration: ' + error.message);
+    } finally {
+        // Restore button state
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}
+
+// Auto-fill public name when model name changes
+document.getElementById('model_name').addEventListener('change', function() {
+    const publicNameInput = document.getElementById('public_name');
+    if (!publicNameInput.value && this.value) {
+        publicNameInput.value = this.value;
+    }
+});
+
+async function testAllConfigs() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    // Show loading state
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Testing All...';
+    
+    try {
+        const response = await fetch('/api/test-all-configs', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.error) {
+            alert('Error testing configurations: ' + data.error);
+        } else if (data.message) {
+            showAlert(data.message, 'alert-info', 'fa-info-circle');
+        } else {
+            // Show results summary
+            const results = data.results || [];
+            const okCount = results.filter(r => r.status === 'OK').length;
+            const ngCount = results.filter(r => r.status === 'NG').length;
+            
+            let message = `Health check completed: ${okCount} OK, ${ngCount} NG`;
+            const alertClass = ngCount === 0 ? 'alert-success' : 'alert-warning';
+            const icon = ngCount === 0 ? 'fa-check-circle' : 'fa-exclamation-triangle';
+            
+            showAlert(message, alertClass, icon);
+            
+            // Refresh health status display for all configs
+            loadHealthStatuses();
+            
+            // Optionally show detailed results
+            if (ngCount > 0) {
+                const failedServices = results.filter(r => r.status === 'NG');
+                let details = 'Failed services:\n';
+                failedServices.forEach(service => {
+                    details += `- ${service.service_id}: ${service.error_message}\n`;
+                });
+                console.log(details);
+            }
+        }
+    } catch (error) {
+        alert('Error testing configurations: ' + error.message);
+    } finally {
+        // Restore button state
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}
+
+async function reloadConfig() {
+    const button = event.target;
+    const originalText = button.innerHTML;
+    
+    // Show loading state
+    button.disabled = true;
+    button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>リロード中...';
+    
+    try {
+        const response = await fetch('/api/reload-config', { method: 'POST' });
+        const result = await response.json();
+        
+        if (result.status === 'success') {
+            showAlert(result.message, 'alert-success', 'fa-check-circle');
+        } else {
+            showAlert(`エラー: ${result.message}`, 'alert-danger', 'fa-exclamation-triangle');
+        }
+    } catch (error) {
+        showAlert(`設定リロードエラー: ${error.message}`, 'alert-danger', 'fa-exclamation-triangle');
+    } finally {
+        // Restore button state
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}
+
+function showAlert(message, alertClass, iconClass) {
+    // Remove existing alerts
+    const existingAlerts = document.querySelectorAll('.dynamic-alert');
+    existingAlerts.forEach(alert => alert.remove());
+    
+    // Create new alert
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert ${alertClass} alert-dismissible fade show dynamic-alert`;
+    alertDiv.innerHTML = `
+        <i class="fas ${iconClass} me-2"></i>
+        ${message.replace(/\n/g, '<br>')}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insert after the header
+    const header = document.querySelector('.border-bottom');
+    header.parentNode.insertBefore(alertDiv, header.nextSibling);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+async function loadHealthStatuses() {
+    try {
+        const response = await fetch('/api/health-status');
+        const statuses = await response.json();
+        
+        if (statuses.error) {
+            console.error('Error loading health statuses:', statuses.error);
+            return;
+        }
+        
+        // Update each configuration card with health status
+        Object.keys(statuses).forEach(serviceId => {
+            const status = statuses[serviceId];
+            const statusElement = document.getElementById(`health-status-${serviceId}`);
+            
+            if (statusElement) {
+                const isHealthy = status.status === 'OK';
+                const statusColor = isHealthy ? 'text-success' : 'text-danger';
+                const statusIcon = isHealthy ? 'fa-check-circle' : 'fa-exclamation-triangle';
+                const responseTime = status.response_time_ms ? ` (${status.response_time_ms}ms)` : '';
+                const modelCount = status.model_count ? ` - ${status.model_count} models` : '';
+                
+                let statusText = `${status.status}${responseTime}${modelCount}`;
+                if (status.error_message && !isHealthy) {
+                    statusText += ` - ${status.error_message}`;
+                }
+                
+                statusElement.innerHTML = `
+                    <small class="${statusColor}">
+                        <i class="fas ${statusIcon} me-1"></i>
+                        ${statusText}
+                    </small>
+                `;
+            }
+        });
+    } catch (error) {
+        console.error('Error loading health statuses:', error);
+    }
+}
+
+// Load health statuses when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadHealthStatuses();
+});
+</script>
+{% endblock %}

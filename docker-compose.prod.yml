@@ -1,0 +1,36 @@
+# Production docker-compose configuration
+# Use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+services:
+  clads-llm-bridge:
+    # Use pre-built image in production
+    # image: clads-llm-bridge:latest
+    
+    # Production-specific settings
+    environment:
+      - LOG_LEVEL=WARNING
+      - LITELLM_LOG=WARNING
+    
+    # Stricter resource limits for production
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    
+    # Production restart policy
+    restart: always
+    
+    # Only use named volumes in production
+    volumes:
+      - clads_data:/app/data
+    
+    # Production logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

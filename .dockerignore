@@ -1,0 +1,60 @@
+# Git and version control
+.git
+.gitignore
+
+# Python cache and virtual environments
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv
+venv/
+.pytest_cache/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Documentation and development files
+README.md
+*.md
+docs/
+
+# Test files and coverage
+tests/
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+
+# Development database files (use volume mounts instead)
+data/*.db
+data/.encryption_key
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Docker files (not needed in container)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Build artifacts
+build/
+dist/
+*.egg-info/

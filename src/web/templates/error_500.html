@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Server Error - CLADS LLM Bridge{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 col-lg-6">
+            <div class="text-center">
+                <div class="mb-4">
+                    <i class="fas fa-server fa-5x text-danger"></i>
+                </div>
+                
+                <h1 class="display-4 text-danger">500</h1>
+                <h2 class="mb-4">Internal Server Error</h2>
+                
+                <p class="lead text-muted mb-4">
+                    Something went wrong on our end. We're working to fix this issue.
+                </p>
+                
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>What happened?</strong> The server encountered an unexpected error while processing your request.
+                </div>
+                
+                <div class="d-grid gap-2 d-md-flex justify-content-md-center mb-4">
+                    <button onclick="window.location.reload()" class="btn btn-primary">
+                        <i class="fas fa-redo me-2"></i>Try Again
+                    </button>
+                    
+                    <a href="/" class="btn btn-outline-primary">
+                        <i class="fas fa-home me-2"></i>Go to Dashboard
+                    </a>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">Troubleshooting Steps</h6>
+                    </div>
+                    <div class="card-body text-start">
+                        <ol class="mb-0">
+                            <li class="mb-2">
+                                <strong>Refresh the page:</strong> Click "Try Again" or press F5 to reload the page.
+                            </li>
+                            <li class="mb-2">
+                                <strong>Check your connection:</strong> Ensure you have a stable internet connection.
+                            </li>
+                            <li class="mb-2">
+                                <strong>Wait a moment:</strong> The server might be temporarily overloaded.
+                            </li>
+                            <li class="mb-2">
+                                <strong>Check service status:</strong> Visit the <a href="/health">health check</a> page to see if all services are running.
+                            </li>
+                            <li>
+                                <strong>Contact administrator:</strong> If the problem persists, contact your system administrator.
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+                
+                {% if error_id %}
+                <div class="mt-3">
+                    <small class="text-muted">Error ID: {{ error_id }}</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .card {
+        text-align: left;
+    }
+    
+    .alert-warning {
+        border-left: 4px solid #ffc107;
+    }
+    
+    ol li {
+        margin-bottom: 0.5rem;
+    }
+</style>
+{% endblock %}

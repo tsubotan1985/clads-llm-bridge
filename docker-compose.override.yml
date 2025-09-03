@@ -1,0 +1,23 @@
+# Development override for docker-compose
+# This file is automatically loaded by docker-compose for development
+
+services:
+  clads-llm-bridge:
+    # Override volumes for development - use local directory
+    volumes:
+      - ./data:/app/data
+      # Optional: Mount source code for development (requires restart)
+      # - ./src:/app/src:ro
+    
+    # Development environment variables
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - LOG_LEVEL=DEBUG
+    
+    # Remove resource limits for development
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'

@@ -1,0 +1,646 @@
+{% extends "base.html" %}
+
+{% block title %}Monitoring - CLADS LLM Bridge{% endblock %}
+
+{% block extra_css %}
+<style>
+    .stats-card {
+        border-left: 4px solid #007bff;
+    }
+    .stats-card.success {
+        border-left-color: #28a745;
+    }
+    .stats-card.warning {
+        border-left-color: #ffc107;
+    }
+    .stats-card.danger {
+        border-left-color: #dc3545;
+    }
+    .leaderboard-table {
+        font-size: 0.9rem;
+    }
+    .progress-bar-container {
+        height: 20px;
+        background-color: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    .progress-bar {
+        height: 100%;
+        background-color: #007bff;
+        transition: width 0.3s ease;
+    }
+    .chart-container {
+        height: 300px;
+        position: relative;
+    }
+    .period-selector {
+        margin-bottom: 20px;
+    }
+    .real-time-indicator {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background-color: #28a745;
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="fas fa-chart-bar me-2"></i>
+        Monitoring Dashboard
+        <span class="real-time-indicator ms-2"></span>
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="refreshData()">
+            <i class="fas fa-sync-alt me-1"></i>
+            Refresh
+        </button>
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger" role="alert">
+    <i class="fas fa-exclamation-triangle me-2"></i>
+    Error loading monitoring data: {{ error }}
+</div>
+{% endif %}
+
+<!-- Time Period Selection -->
+<div class="period-selector">
+    <div class="btn-group" role="group" aria-label="Time period selection">
+        <input type="radio" class="btn-check" name="period" id="hourly" value="hourly" {% if period == 'hourly' %}checked{% endif %}>
+        <label class="btn btn-outline-primary" for="hourly">
+            <i class="fas fa-clock me-1"></i>Hourly
+        </label>
+        
+        <input type="radio" class="btn-check" name="period" id="daily" value="daily" {% if period == 'daily' %}checked{% endif %}>
+        <label class="btn btn-outline-primary" for="daily">
+            <i class="fas fa-calendar-day me-1"></i>Daily
+        </label>
+        
+        <input type="radio" class="btn-check" name="period" id="weekly" value="weekly" {% if period == 'weekly' %}checked{% endif %}>
+        <label class="btn btn-outline-primary" for="weekly">
+            <i class="fas fa-calendar-week me-1"></i>Weekly
+        </label>
+    </div>
+</div>
+
+<!-- Real-time Statistics -->
+{% if real_time_stats %}
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-1">Requests (5min)</h6>
+                        <h4 class="mb-0" data-stat="requests_last_5min">{{ real_time_stats.get('requests_last_5min', 0) }}</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-bolt fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-1">Tokens (5min)</h6>
+                        <h4 class="mb-0" data-stat="tokens_last_5min">{{ "{:,}".format(real_time_stats.get('tokens_last_5min', 0)) }}</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-coins fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-1">Avg Response (5min)</h6>
+                        <h4 class="mb-0" data-stat="avg_response_time_5min">{{ "%.0f"|format(real_time_stats.get('avg_response_time_5min', 0)) }}ms</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-tachometer-alt fa-2x text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3 mb-3">
+        <div class="card stats-card {% if real_time_stats.get('error_rate_hour', 0) > 5 %}danger{% else %}success{% endif %}">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-1">Error Rate (1h)</h6>
+                        <h4 class="mb-0" data-stat="error_rate_hour">{{ "%.1f"|format(real_time_stats.get('error_rate_hour', 0)) }}%</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-exclamation-triangle fa-2x {% if real_time_stats.get('error_rate_hour', 0) > 5 %}text-danger{% else %}text-success{% endif %}"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Period Statistics -->
+{% if usage_stats %}
+<div class="row mb-4">
+    <div class="col-md-4 mb-3">
+        <div class="card stats-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-1">Total Requests</h6>
+                        <h4 class="mb-0">{{ "{:,}".format(usage_stats.total_requests) }}</h4>
+                        <small class="text-muted">{{ period.title() }} period</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-server fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card stats-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-1">Total Tokens</h6>
+                        <h4 class="mb-0">{{ "{:,}".format(usage_stats.total_tokens) }}</h4>
+                        <small class="text-muted">
+                            In: {{ "{:,}".format(usage_stats.total_input_tokens) }} | 
+                            Out: {{ "{:,}".format(usage_stats.total_output_tokens) }}
+                        </small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-coins fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4 mb-3">
+        <div class="card stats-card">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title text-muted mb-1">Success Rate</h6>
+                        <h4 class="mb-0">{{ "%.1f"|format(usage_stats.success_rate) }}%</h4>
+                        <small class="text-muted">Avg Response: {{ "%.0f"|format(usage_stats.average_response_time) }}ms</small>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-check-circle fa-2x {% if usage_stats.success_rate >= 95 %}text-success{% elif usage_stats.success_rate >= 90 %}text-warning{% else %}text-danger{% endif %}"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Leaderboards -->
+<div class="row">
+    <!-- Client IP Leaderboard -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-users me-2"></i>
+                    Client Leaderboard
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if client_leaderboard %}
+                <div class="table-responsive">
+                    <table class="table table-sm leaderboard-table" id="clientLeaderboard">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Client IP</th>
+                                <th>Requests</th>
+                                <th>Tokens</th>
+                                <th>Usage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for client in client_leaderboard %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>
+                                    <code>{{ client.client_ip }}</code>
+                                </td>
+                                <td>{{ "{:,}".format(client.total_requests) }}</td>
+                                <td>{{ "{:,}".format(client.total_tokens) }}</td>
+                                <td>
+                                    <div class="progress-bar-container">
+                                        <div class="progress-bar" style="width: {{ (client.total_tokens / client_leaderboard[0].total_tokens * 100) if client_leaderboard[0].total_tokens > 0 else 0 }}%"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Client Chart Container -->
+                <div class="chart-container mt-3">
+                    <canvas id="clientChart"></canvas>
+                </div>
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="fas fa-chart-bar fa-3x mb-3"></i>
+                    <p>No client data available for the selected period.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Model Usage Leaderboard -->
+    <div class="col-md-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-robot me-2"></i>
+                    Model Leaderboard
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if model_leaderboard %}
+                <div class="table-responsive">
+                    <table class="table table-sm leaderboard-table" id="modelLeaderboard">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Model</th>
+                                <th>Requests</th>
+                                <th>Tokens</th>
+                                <th>Usage</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for model in model_leaderboard %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>
+                                    <div>
+                                        <strong>{{ model.public_name }}</strong>
+                                        {% if model.model_name != model.public_name %}
+                                        <br><small class="text-muted">{{ model.model_name }}</small>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>{{ "{:,}".format(model.total_requests) }}</td>
+                                <td>{{ "{:,}".format(model.total_tokens) }}</td>
+                                <td>
+                                    <div class="progress-bar-container">
+                                        <div class="progress-bar" style="width: {{ (model.total_tokens / model_leaderboard[0].total_tokens * 100) if model_leaderboard[0].total_tokens > 0 else 0 }}%"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Model Chart Container -->
+                <div class="chart-container mt-3">
+                    <canvas id="modelChart"></canvas>
+                </div>
+                
+                <!-- Model Performance Metrics -->
+                {% if model_leaderboard %}
+                <div class="mt-3 model-performance-metrics">
+                    <h6>Performance Metrics</h6>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <small class="text-muted">Fastest Response Time:</small><br>
+                            {% set fastest_model = model_leaderboard | min(attribute='average_response_time') %}
+                            <strong>{{ fastest_model.public_name }}</strong> - {{ "%.0f"|format(fastest_model.average_response_time) }}ms
+                        </div>
+                        <div class="col-md-6">
+                            <small class="text-muted">Most Active Clients:</small><br>
+                            {% set most_clients_model = model_leaderboard | max(attribute='unique_clients') %}
+                            <strong>{{ most_clients_model.public_name }}</strong> - {{ most_clients_model.unique_clients }} clients
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="text-center text-muted py-4">
+                    <i class="fas fa-robot fa-3x mb-3"></i>
+                    <p>No model usage data available for the selected period.</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let clientChart = null;
+let modelChart = null;
+
+// Period selection handler
+document.querySelectorAll('input[name="period"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        if (this.checked) {
+            window.location.href = `/monitoring?period=${this.value}`;
+        }
+    });
+});
+
+// Refresh data function
+function refreshData() {
+    const currentPeriod = document.querySelector('input[name="period"]:checked').value;
+    updateLeaderboards(currentPeriod);
+}
+
+// Update leaderboards with real-time data
+async function updateLeaderboards(period) {
+    try {
+        const response = await fetch(`/api/monitoring/stats?period=${period}`);
+        const data = await response.json();
+        
+        if (data.error) {
+            console.error('Error fetching data:', data.error);
+            return;
+        }
+        
+        // Update client leaderboard
+        updateClientLeaderboard(data.client_leaderboard);
+        
+        // Update model leaderboard
+        updateModelLeaderboard(data.model_leaderboard);
+        
+        // Update real-time stats
+        updateRealTimeStats(data.real_time_stats);
+        
+    } catch (error) {
+        console.error('Error updating leaderboards:', error);
+    }
+}
+
+function updateClientLeaderboard(clients) {
+    const tbody = document.querySelector('#clientLeaderboard tbody');
+    if (!tbody || !clients.length) return;
+    
+    tbody.innerHTML = '';
+    
+    clients.forEach((client, index) => {
+        const maxTokens = clients[0].total_tokens || 1;
+        const percentage = (client.total_tokens / maxTokens * 100);
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${index + 1}</td>
+            <td><code>${client.client_ip}</code></td>
+            <td>${client.total_requests.toLocaleString()}</td>
+            <td>${client.total_tokens.toLocaleString()}</td>
+            <td>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" style="width: ${percentage}%"></div>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+    
+    // Update client chart
+    if (clientChart && clients.length > 0) {
+        clientChart.data.labels = clients.map(c => c.client_ip);
+        clientChart.data.datasets[0].data = clients.map(c => c.total_tokens);
+        clientChart.update('none');
+    }
+}
+
+function updateModelLeaderboard(models) {
+    const tbody = document.querySelector('#modelLeaderboard tbody');
+    if (!tbody || !models.length) return;
+    
+    tbody.innerHTML = '';
+    
+    models.forEach((model, index) => {
+        const maxTokens = models[0].total_tokens || 1;
+        const percentage = (model.total_tokens / maxTokens * 100);
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${index + 1}</td>
+            <td>
+                <div>
+                    <strong>${model.public_name}</strong>
+                    ${model.model_name !== model.public_name ? `<br><small class="text-muted">${model.model_name}</small>` : ''}
+                </div>
+            </td>
+            <td>${model.total_requests.toLocaleString()}</td>
+            <td>${model.total_tokens.toLocaleString()}</td>
+            <td>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" style="width: ${percentage}%"></div>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+    
+    // Update model chart
+    if (modelChart && models.length > 0) {
+        modelChart.data.labels = models.map(m => m.public_name);
+        modelChart.data.datasets[0].data = models.map(m => m.total_tokens);
+        modelChart.update('none');
+    }
+    
+    // Update performance metrics
+    updateModelPerformanceMetrics(models);
+}
+
+function updateModelPerformanceMetrics(models) {
+    if (!models.length) return;
+    
+    // Find fastest model
+    const fastestModel = models.reduce((prev, current) => 
+        (prev.average_response_time < current.average_response_time) ? prev : current
+    );
+    
+    // Find model with most clients
+    const mostClientsModel = models.reduce((prev, current) => 
+        (prev.unique_clients > current.unique_clients) ? prev : current
+    );
+    
+    // Update performance metrics display
+    const performanceSection = document.querySelector('.model-performance-metrics');
+    if (performanceSection) {
+        performanceSection.innerHTML = `
+            <h6>Performance Metrics</h6>
+            <div class="row">
+                <div class="col-md-6">
+                    <small class="text-muted">Fastest Response Time:</small><br>
+                    <strong>${fastestModel.public_name}</strong> - ${Math.round(fastestModel.average_response_time)}ms
+                </div>
+                <div class="col-md-6">
+                    <small class="text-muted">Most Active Clients:</small><br>
+                    <strong>${mostClientsModel.public_name}</strong> - ${mostClientsModel.unique_clients} clients
+                </div>
+            </div>
+        `;
+    }
+}
+
+function updateRealTimeStats(stats) {
+    // Update real-time stat cards
+    const statsElements = {
+        'requests_last_5min': document.querySelector('[data-stat="requests_last_5min"]'),
+        'tokens_last_5min': document.querySelector('[data-stat="tokens_last_5min"]'),
+        'avg_response_time_5min': document.querySelector('[data-stat="avg_response_time_5min"]'),
+        'error_rate_hour': document.querySelector('[data-stat="error_rate_hour"]')
+    };
+    
+    Object.entries(statsElements).forEach(([key, element]) => {
+        if (element && stats[key] !== undefined) {
+            if (key === 'tokens_last_5min') {
+                element.textContent = stats[key].toLocaleString();
+            } else if (key === 'avg_response_time_5min') {
+                element.textContent = Math.round(stats[key]) + 'ms';
+            } else if (key === 'error_rate_hour') {
+                element.textContent = stats[key].toFixed(1) + '%';
+            } else {
+                element.textContent = stats[key];
+            }
+        }
+    });
+}
+
+// Auto-refresh every 30 seconds
+setInterval(refreshData, 30000);
+
+// Initialize charts when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    initializeCharts();
+});
+
+function initializeCharts() {
+    // Client Chart
+    const clientCtx = document.getElementById('clientChart');
+    if (clientCtx && {{ client_leaderboard|length }} > 0) {
+        const clientData = {
+            labels: [
+                {% for client in client_leaderboard %}
+                '{{ client.client_ip }}'{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ],
+            datasets: [{
+                label: 'Tokens Used',
+                data: [
+                    {% for client in client_leaderboard %}
+                    {{ client.total_tokens }}{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                backgroundColor: 'rgba(54, 162, 235, 0.6)',
+                borderColor: 'rgba(54, 162, 235, 1)',
+                borderWidth: 1
+            }]
+        };
+
+        clientChart = new Chart(clientCtx, {
+            type: 'bar',
+            data: clientData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Model Chart
+    const modelCtx = document.getElementById('modelChart');
+    if (modelCtx && {{ model_leaderboard|length }} > 0) {
+        const modelData = {
+            labels: [
+                {% for model in model_leaderboard %}
+                '{{ model.public_name }}'{% if not loop.last %},{% endif %}
+                {% endfor %}
+            ],
+            datasets: [{
+                label: 'Tokens Used',
+                data: [
+                    {% for model in model_leaderboard %}
+                    {{ model.total_tokens }}{% if not loop.last %},{% endif %}
+                    {% endfor %}
+                ],
+                backgroundColor: 'rgba(75, 192, 192, 0.6)',
+                borderColor: 'rgba(75, 192, 192, 1)',
+                borderWidth: 1
+            }]
+        };
+
+        modelChart = new Chart(modelCtx, {
+            type: 'bar',
+            data: modelData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+</script>
+{% endblock %}
