@@ -16,6 +16,8 @@ class LLMConfig(BaseModel):
     model_name: str = Field("", description="Name of the model to use")
     public_name: str = Field("", description="Public name to display for this model")
     enabled: bool = Field(True, description="Whether this configuration is enabled")
+    available_on_4321: bool = Field(True, description="Available on port 4321 (general endpoint)")
+    available_on_4333: bool = Field(True, description="Available on port 4333 (special endpoint)")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
     updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
@@ -55,6 +57,8 @@ class LLMConfig(BaseModel):
         """Convert to dictionary for database storage."""
         data = self.dict()
         data['service_type'] = self.service_type.value if isinstance(self.service_type, ServiceType) else self.service_type
+        data['available_on_4321'] = int(self.available_on_4321)  # Convert to integer for SQLite
+        data['available_on_4333'] = int(self.available_on_4333)  # Convert to integer for SQLite
         data['created_at'] = self.created_at.isoformat()
         data['updated_at'] = self.updated_at.isoformat()
         return data

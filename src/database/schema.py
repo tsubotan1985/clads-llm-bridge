@@ -5,7 +5,7 @@ class DatabaseSchema:
     """SQLite database schema for CLADS LLM Bridge."""
     
     # Schema version for migrations
-    CURRENT_VERSION = 1
+    CURRENT_VERSION = 2
     
     @staticmethod
     def get_create_tables_sql() -> str:
@@ -26,6 +26,8 @@ class DatabaseSchema:
             model_name TEXT NOT NULL DEFAULT '',
             public_name TEXT NOT NULL DEFAULT '',
             enabled BOOLEAN NOT NULL DEFAULT 1,
+            available_on_4321 BOOLEAN NOT NULL DEFAULT 1,
+            available_on_4333 BOOLEAN NOT NULL DEFAULT 1,
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             

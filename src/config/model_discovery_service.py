@@ -144,7 +144,16 @@ class ModelDiscoveryService:
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
         headers["Content-Type"] = "application/json"
-        
+
+        # Check if this is z.ai API (doesn't support /models endpoint)
+        if "api.z.ai" in base_url:
+            # Return known z.ai GLM models
+            return [
+                "glm-4.6",
+                "glm-4.5",
+                "glm-4.5-air"
+            ]
+
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout)) as session:
             async with session.get(f"{base_url}/models", headers=headers) as response:
                 if response.status == 200:

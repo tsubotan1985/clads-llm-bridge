@@ -34,8 +34,23 @@ class AuthenticationService:
             if not auth_config:
                 return False
             
-            # Verify password against stored hash
-            return self.pwd_context.verify(password, auth_config.password_hash)
+            # Check if it's a SHA256 hash (temporary workaround for bcrypt issues)
+            if auth_config.password_hash and auth_config.password_hash.startswith('sha256_'):
+                parts = auth_config.password_hash.split('_')
+                if len(parts) == 3:
+                    _, salt, stored_hash = parts
+                    import hashlib
+                    password_with_salt = password + salt
+                    calculated_hash = hashlib.sha256(password_with_salt.encode()).hexdigest()
+                    return calculated_hash == stored_hash
+                return False
+            
+            # Verify password against stored bcrypt hash
+            try:
+                return self.pwd_context.verify(password, auth_config.password_hash)
+            except Exception as bcrypt_error:
+                print(f"Bcrypt verification failed: {bcrypt_error}")
+                return False
         except Exception as e:
             print(f"Authentication error: {e}")
             return False

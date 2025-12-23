@@ -24,26 +24,56 @@ logger = logging.getLogger(__name__)
 class ProxyServer:
     """LiteLLM proxy server."""
     
-    def __init__(self, config_service: ConfigurationService, port: int = 4321):
+    def __init__(self, config_service: ConfigurationService, port: int = 4321, endpoint_type: str = 'general'):
         """Initialize the proxy server.
         
         Args:
             config_service: Configuration service instance
             port: Port to run the server on
+            endpoint_type: Type of endpoint ('general' for 4321, 'special' for 4333)
         """
         self.config_service = config_service
         self.port = port
+        self.endpoint_type = endpoint_type
         self.adapter = LiteLLMAdapter(config_service)
         self.vscode_adapter = VSCodeLMProxyAdapter()
         self.usage_tracker = UsageTracker(config_service.db_path)
         self.error_handler = ErrorHandler()
-        self.app = FastAPI(title="CLADS LLM Bridge Proxy", version="1.0.0")
+        self.app = FastAPI(
+            title=f"CLADS LLM Bridge Proxy ({endpoint_type.title()})",
+            version="1.0.0"
+        )
         
         # Setup routes
         self._setup_routes()
         
         # Configure logging
         logging.basicConfig(level=logging.INFO)
+        logger.info(f"Proxy server initialized for endpoint type: {endpoint_type} on port {port}")
+    
+    def _filter_models_by_endpoint(self, configs: list) -> list:
+        """Filter models based on endpoint type.
+        
+        Args:
+            configs: List of LLM configurations
+            
+        Returns:
+            Filtered list of configurations
+        """
+        if self.endpoint_type == 'general':
+            # Port 4321: Only models with available_on_4321=True
+            filtered = [c for c in configs if getattr(c, 'available_on_4321', True)]
+            logger.debug(f"Filtered {len(filtered)}/{len(configs)} models for general endpoint (4321)")
+            return filtered
+        elif self.endpoint_type == 'special':
+            # Port 4333: Only models with available_on_4333=True
+            filtered = [c for c in configs if getattr(c, 'available_on_4333', True)]
+            logger.debug(f"Filtered {len(filtered)}/{len(configs)} models for special endpoint (4333)")
+            return filtered
+        else:
+            # Unknown endpoint type, return all
+            logger.warning(f"Unknown endpoint type: {self.endpoint_type}, returning all models")
+            return configs
         
     def _setup_routes(self):
         """Setup FastAPI routes."""
@@ -98,7 +128,14 @@ class ProxyServer:
                 model_mapping = self.adapter.get_model_mapping()
                 models = []
                 
+                # Filter models based on endpoint type
                 for model_key, config in model_mapping.items():
+                    # Apply endpoint filter
+                    if self.endpoint_type == 'general' and not getattr(config, 'available_on_4321', True):
+                        continue
+                    if self.endpoint_type == 'special' and not getattr(config, 'available_on_4333', True):
+                        continue
+                    
                     models.append({
                         "id": model_key,
                         "object": "model",
@@ -108,6 +145,8 @@ class ProxyServer:
                         "root": model_key,
                         "parent": None
                     })
+                
+                logger.info(f"Listed {len(models)} models for {self.endpoint_type} endpoint (port {self.port})")
                 
                 return {
                     "object": "list",
@@ -134,6 +173,18 @@ class ProxyServer:
                 config = self.adapter.get_config_for_model(model_name)
                 if not config:
                     raise self.error_handler.handle_request_validation_error(f"Model '{model_name}' not found")
+                
+                # Check endpoint availability
+                if self.endpoint_type == 'general' and not getattr(config, 'available_on_4321', True):
+                    logger.warning(f"Model '{model_name}' not available on general endpoint (4321)")
+                    raise self.error_handler.handle_request_validation_error(
+                        f"Model '{model_name}' is not available on this endpoint. Please use the special endpoint (4333)."
+                    )
+                elif self.endpoint_type == 'special' and not getattr(config, 'available_on_4333', True):
+                    logger.warning(f"Model '{model_name}' not available on special endpoint (4333)")
+                    raise self.error_handler.handle_request_validation_error(
+                        f"Model '{model_name}' is not available on this endpoint."
+                    )
                 
                 # Check service availability
                 availability_error = self.error_handler.check_service_availability(config)

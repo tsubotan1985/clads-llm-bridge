@@ -57,12 +57,29 @@ class DatabaseMigrations:
         if self.get_current_version() < 1:
             migrations.append((1, DatabaseSchema.get_full_schema_sql()))
         
-        # Future migrations would be added here
-        # Example:
-        # if self.get_current_version() < 2:
-        #     migrations.append((2, self._get_v2_migration_sql()))
+        # Migration from version 1 to 2 (dual endpoint support)
+        if self.get_current_version() < 2:
+            migrations.append((2, self._get_v2_migration_sql()))
         
         return migrations
+    
+    def _get_v2_migration_sql(self) -> str:
+        """Get SQL for version 2 migration (dual endpoint support).
+        
+        Returns:
+            SQL script for migration
+        """
+        return """
+        -- Add dual endpoint columns to llm_configs table
+        ALTER TABLE llm_configs ADD COLUMN available_on_4321 BOOLEAN NOT NULL DEFAULT 1;
+        ALTER TABLE llm_configs ADD COLUMN available_on_4333 BOOLEAN NOT NULL DEFAULT 1;
+        
+        -- Update existing records to be available on both endpoints
+        UPDATE llm_configs SET available_on_4321 = 1, available_on_4333 = 1;
+        
+        -- Update schema version
+        INSERT OR REPLACE INTO schema_version (version) VALUES (2);
+        """
     
     def apply_migrations(self) -> None:
         """Apply all pending migrations."""

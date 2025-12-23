@@ -5,8 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: clads-llm-bridge
     ports:
-      - "${WEB_UI_PORT:-4322}:${WEB_UI_PORT:-4322}"  # Web UI
-      - "${PROXY_PORT:-4321}:${PROXY_PORT:-4321}"    # Proxy server
+      - "${WEB_UI_PORT:-4322}:${WEB_UI_PORT:-4322}"              # Web UI
+      - "${PROXY_PORT_GENERAL:-4321}:${PROXY_PORT_GENERAL:-4321}" # General proxy (limited models)
+      - "${PROXY_PORT_SPECIAL:-4333}:${PROXY_PORT_SPECIAL:-4333}" # Special proxy (full access)
     volumes:
       # Persistent data storage with named volume
       - clads_data:/app/data
@@ -17,7 +18,9 @@ services:
       - PYTHONPATH=/app
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - WEB_UI_PORT=${WEB_UI_PORT:-4322}
-      - PROXY_PORT=${PROXY_PORT:-4321}
+      - PROXY_PORT_GENERAL=${PROXY_PORT_GENERAL:-4321}
+      - PROXY_PORT_SPECIAL=${PROXY_PORT_SPECIAL:-4333}
+      - PROXY_PORT=${PROXY_PORT:-4321}  # Backward compatibility
       - DATABASE_PATH=/app/data/clads_llm_bridge.db
       - DATA_DIR=/app/data
       - INITIAL_PASSWORD=${INITIAL_PASSWORD:-Hakodate4}
@@ -34,7 +37,7 @@ services:
       - ENCRYPTION_KEY_PATH=${ENCRYPTION_KEY_PATH:-/app/data/.encryption_key}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "sh", "-c", "curl -f http://localhost:${WEB_UI_PORT:-4322}/health && curl -f http://localhost:${PROXY_PORT:-4321}/health"]
+      test: ["CMD", "sh", "-c", "curl -f http://localhost:${WEB_UI_PORT:-4322}/health && curl -f http://localhost:${PROXY_PORT_GENERAL:-4321}/health && curl -f http://localhost:${PROXY_PORT_SPECIAL:-4333}/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -222,10 +222,29 @@
                         </div>
                     </div>
                     
+                    <div class="mb-3">
+                        <label class="form-label">エンドポイント公開設定</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="available_on_4321" name="available_on_4321" checked>
+                            <label class="form-check-label" for="available_on_4321">
+                                <i class="fas fa-globe me-1"></i>ポート4321で公開 (一般エンドポイント)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="available_on_4333" name="available_on_4333" checked>
+                            <label class="form-check-label" for="available_on_4333">
+                                <i class="fas fa-star me-1"></i>ポート4333で公開 (特別エンドポイント)
+                            </label>
+                        </div>
+                        <div class="form-text">
+                            <i class="fas fa-info-circle me-1"></i>少なくとも1つのエンドポイントを選択してください
+                        </div>
+                    </div>
+                    
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="enabled" name="enabled" checked>
                         <label class="form-check-label" for="enabled">
-                            Enable this configuration
+                            <i class="fas fa-power-off me-1"></i>この設定を有効化
                         </label>
                     </div>
                 </div>
@@ -277,6 +296,8 @@ function openNewConfigModal() {
     document.getElementById('configForm').reset();
     document.getElementById('config_id').value = '';
     document.getElementById('enabled').checked = true;
+    document.getElementById('available_on_4321').checked = true;
+    document.getElementById('available_on_4333').checked = true;
 }
 
 function editConfig(configId) {
@@ -291,6 +312,8 @@ function editConfig(configId) {
     document.getElementById('model_name').innerHTML = `<option value="${config.model_name}" selected>${config.model_name}</option>`;
     document.getElementById('public_name').value = config.public_name;
     document.getElementById('enabled').checked = config.enabled;
+    document.getElementById('available_on_4321').checked = config.available_on_4321 !== undefined ? config.available_on_4321 : true;
+    document.getElementById('available_on_4333').checked = config.available_on_4333 !== undefined ? config.available_on_4333 : true;
     
     new bootstrap.Modal(document.getElementById('configModal')).show();
 }

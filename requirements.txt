@@ -3,7 +3,7 @@ fastapi==0.104.1
 uvicorn[standard]==0.24.0
 
 # LLM proxy functionality
-litellm==1.44.22
+litellm==1.52.12
 
 # Database (sqlite3 is built into Python)
 

@@ -28,7 +28,8 @@ load_dotenv()
 # Get configuration from environment variables
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()
 WEB_UI_PORT = int(os.getenv('WEB_UI_PORT', '4322'))
-PROXY_PORT = int(os.getenv('PROXY_PORT', '4321'))
+PROXY_PORT_GENERAL = int(os.getenv('PROXY_PORT_GENERAL', os.getenv('PROXY_PORT', '4321')))
+PROXY_PORT_SPECIAL = int(os.getenv('PROXY_PORT_SPECIAL', '4333'))
 DATA_DIR = os.getenv('DATA_DIR', 'data')
 DATABASE_PATH = os.getenv('DATABASE_PATH', f'{DATA_DIR}/clads_llm_bridge.db')
 
@@ -50,7 +51,8 @@ logging.getLogger("litellm").setLevel(logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Global variables for graceful shutdown
-proxy_manager: Optional[ProxyServerManager] = None
+proxy_manager_general: Optional[ProxyServerManager] = None
+proxy_manager_special: Optional[ProxyServerManager] = None
 web_server: Optional[uvicorn.Server] = None
 shutdown_event = threading.Event()
 
@@ -173,31 +175,44 @@ def cleanup_on_exit():
     """Cleanup function called on exit."""
     logger.info("Performing cleanup on exit...")
     
-    if proxy_manager:
+    if proxy_manager_general:
         try:
-            proxy_manager.shutdown()
+            proxy_manager_general.shutdown()
         except Exception as e:
-            logger.error(f"Error during proxy cleanup: {e}")
+            logger.error(f"Error during general proxy cleanup: {e}")
+    
+    if proxy_manager_special:
+        try:
+            proxy_manager_special.shutdown()
+        except Exception as e:
+            logger.error(f"Error during special proxy cleanup: {e}")
     
     logger.info("Cleanup completed")
 
 
-async def start_proxy_server_async(startup_manager: ApplicationStartup, port: int):
+async def start_proxy_server_async(startup_manager: ApplicationStartup, port: int, endpoint_type: str):
     """Start the proxy server asynchronously.
     
     Args:
         startup_manager: Application startup manager
         port: Port to run proxy server on
+        endpoint_type: Type of endpoint ('general' or 'special')
     """
-    global proxy_manager
+    global proxy_manager_general, proxy_manager_special
     
     try:
-        logger.info(f"Starting LiteLLM proxy server on port {port}...")
-        proxy_manager = ProxyServerManager(startup_manager.database_path, port=port)
+        logger.info(f"Starting LiteLLM proxy server ({endpoint_type}) on port {port}...")
+        proxy_manager = ProxyServerManager(startup_manager.database_path, port=port, endpoint_type=endpoint_type)
+        
+        # Store in appropriate global variable
+        if endpoint_type == 'general':
+            proxy_manager_general = proxy_manager
+        else:
+            proxy_manager_special = proxy_manager
         
         # Load configuration before starting
         if not proxy_manager.initialize():
-            logger.error("Failed to initialize proxy server")
+            logger.error(f"Failed to initialize {endpoint_type} proxy server")
             return False
         
         # Start the proxy server asynchronously
@@ -205,7 +220,7 @@ async def start_proxy_server_async(startup_manager: ApplicationStartup, port: in
         return True
         
     except Exception as e:
-        logger.error(f"Error starting proxy server: {e}")
+        logger.error(f"Error starting {endpoint_type} proxy server: {e}")
         logger.exception("Full error details:")
         shutdown_event.set()
         return False
@@ -225,16 +240,18 @@ def create_health_check_app() -> uvicorn.Server:
     async def health_check():
         """Container orchestration health check endpoint."""
         try:
-            # Check if both services are running
+            # Check if all services are running
             web_healthy = web_server is not None and not shutdown_event.is_set()
-            proxy_healthy = proxy_manager is not None and not shutdown_event.is_set()
+            proxy_general_healthy = proxy_manager_general is not None and not shutdown_event.is_set()
+            proxy_special_healthy = proxy_manager_special is not None and not shutdown_event.is_set()
             
-            if web_healthy and proxy_healthy:
+            if web_healthy and proxy_general_healthy and proxy_special_healthy:
                 return {
                     "status": "healthy",
                     "services": {
                         "web_ui": {"status": "running", "port": WEB_UI_PORT},
-                        "proxy": {"status": "running", "port": PROXY_PORT}
+                        "proxy_general": {"status": "running", "port": PROXY_PORT_GENERAL},
+                        "proxy_special": {"status": "running", "port": PROXY_PORT_SPECIAL}
                     },
                     "timestamp": time.time()
                 }
@@ -243,7 +260,8 @@ def create_health_check_app() -> uvicorn.Server:
                     "status": "unhealthy",
                     "services": {
                         "web_ui": {"status": "running" if web_healthy else "stopped", "port": WEB_UI_PORT},
-                        "proxy": {"status": "running" if proxy_healthy else "stopped", "port": PROXY_PORT}
+                        "proxy_general": {"status": "running" if proxy_general_healthy else "stopped", "port": PROXY_PORT_GENERAL},
+                        "proxy_special": {"status": "running" if proxy_special_healthy else "stopped", "port": PROXY_PORT_SPECIAL}
                     },
                     "timestamp": time.time()
                 }
@@ -259,7 +277,7 @@ def create_health_check_app() -> uvicorn.Server:
         """Kubernetes readiness probe endpoint."""
         try:
             # Check if services are ready to accept traffic
-            if proxy_manager and web_server and not shutdown_event.is_set():
+            if proxy_manager_general and proxy_manager_special and web_server and not shutdown_event.is_set():
                 return {"status": "ready", "timestamp": time.time()}
             else:
                 return {"status": "not_ready", "timestamp": time.time()}
@@ -283,10 +301,10 @@ def create_health_check_app() -> uvicorn.Server:
 
 async def main_async():
     """Main application entry point with enhanced startup and shutdown handling."""
-    global web_server, proxy_manager
+    global web_server, proxy_manager_general, proxy_manager_special
     
     logger.info("Starting CLADS LLM Bridge Server...")
-    logger.info(f"Configuration: Web UI Port={WEB_UI_PORT}, Proxy Port={PROXY_PORT}, Data Dir={DATA_DIR}")
+    logger.info(f"Configuration: Web UI Port={WEB_UI_PORT}, Proxy General Port={PROXY_PORT_GENERAL}, Proxy Special Port={PROXY_PORT_SPECIAL}, Data Dir={DATA_DIR}")
     
     # Initialize startup manager
     startup_manager = ApplicationStartup()
@@ -331,7 +349,8 @@ async def main_async():
     
     logger.info(f"Starting servers...")
     logger.info(f"Configuration UI: http://0.0.0.0:{WEB_UI_PORT}")
-    logger.info(f"LiteLLM Proxy API: http://0.0.0.0:{PROXY_PORT}")
+    logger.info(f"LiteLLM Proxy API (General): http://0.0.0.0:{PROXY_PORT_GENERAL}")
+    logger.info(f"LiteLLM Proxy API (Special): http://0.0.0.0:{PROXY_PORT_SPECIAL}")
     logger.info(f"Health Check: http://0.0.0.0:{WEB_UI_PORT}/health")
     
     try:
@@ -347,18 +366,19 @@ async def main_async():
         # Create web server instance
         web_server = uvicorn.Server(web_config)
         
-        # Start both servers concurrently
+        # Start all servers concurrently
         web_task = asyncio.create_task(web_server.serve())
-        proxy_task = asyncio.create_task(start_proxy_server_async(startup_manager, PROXY_PORT))
+        proxy_general_task = asyncio.create_task(start_proxy_server_async(startup_manager, PROXY_PORT_GENERAL, 'general'))
+        proxy_special_task = asyncio.create_task(start_proxy_server_async(startup_manager, PROXY_PORT_SPECIAL, 'special'))
         
         # Create shutdown event task
         shutdown_task = asyncio.create_task(wait_for_shutdown())
         
-        logger.info("Both servers starting...")
+        logger.info("All servers starting...")
         
         # Wait for any task to complete or shutdown signal
         done, pending = await asyncio.wait(
-            [web_task, proxy_task, shutdown_task],
+            [web_task, proxy_general_task, proxy_special_task, shutdown_task],
             return_when=asyncio.FIRST_COMPLETED
         )
         
@@ -378,9 +398,11 @@ async def main_async():
         if web_server:
             web_server.should_exit = True
         
-        # Graceful shutdown of proxy server
-        if proxy_manager:
-            proxy_manager.shutdown()
+        # Graceful shutdown of proxy servers
+        if proxy_manager_general:
+            proxy_manager_general.shutdown()
+        if proxy_manager_special:
+            proxy_manager_special.shutdown()
         
         logger.info("Application shutdown complete")
         

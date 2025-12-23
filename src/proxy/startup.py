@@ -22,20 +22,24 @@ logger = logging.getLogger(__name__)
 class ProxyServerManager:
     """Manager for the proxy server lifecycle with enhanced startup and shutdown handling."""
     
-    def __init__(self, db_path: str = None, port: int = 4321):
+    def __init__(self, db_path: str = None, port: int = 4321, endpoint_type: str = 'general'):
         """Initialize the proxy server manager.
         
         Args:
             db_path: Path to the database file
             port: Port to run the server on
+            endpoint_type: Type of endpoint ('general' for 4321, 'special' for 4333)
         """
         self.db_path = db_path or "data/clads_llm_bridge.db"
         self.port = port
+        self.endpoint_type = endpoint_type
         self.config_service: Optional[ConfigurationService] = None
         self.proxy_server: Optional[ProxyServer] = None
         self._shutdown_event = threading.Event()
         self._startup_complete = False
         self._initialization_error: Optional[str] = None
+        
+        logger.info(f"ProxyServerManager initialized for {endpoint_type} endpoint on port {port}")
         
     def initialize(self) -> bool:
         """Initialize the proxy server components with enhanced error handling.
@@ -74,10 +78,10 @@ class ProxyServerManager:
                 self._initialization_error = "Configuration loading failed"
                 return False
             
-            # Create proxy server
-            logger.info(f"Creating proxy server on port {self.port}...")
-            self.proxy_server = ProxyServer(self.config_service, self.port)
-            logger.info(f"Proxy server instance created successfully")
+            # Create proxy server with endpoint type
+            logger.info(f"Creating proxy server on port {self.port} with endpoint type: {self.endpoint_type}...")
+            self.proxy_server = ProxyServer(self.config_service, self.port, self.endpoint_type)
+            logger.info(f"Proxy server instance created successfully for {self.endpoint_type} endpoint")
             
             # Pre-configure LiteLLM to catch configuration errors early
             logger.info("Pre-configuring LiteLLM adapter...")

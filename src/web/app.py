@@ -232,7 +232,9 @@ class WebApp:
             api_key: str = Form(""),
             model_name: str = Form(""),
             public_name: str = Form(""),
-            enabled: bool = Form(False)
+            enabled: bool = Form(False),
+            available_on_4321: bool = Form(False),
+            available_on_4333: bool = Form(False)
         ):
             """Save LLM configuration."""
             try:
@@ -240,6 +242,12 @@ class WebApp:
                 existing_config = None
                 if config_id:
                     existing_config = self.config_service.get_llm_config(config_id)
+                
+                # Validate endpoint availability
+                if not available_on_4321 and not available_on_4333:
+                    return self.error_handler.handle_configuration_error(
+                        request, "save", "少なくとも1つのエンドポイントを選択してください", config_id, service_type
+                    )
                 
                 # Validate form data
                 form_data = {
@@ -249,7 +257,9 @@ class WebApp:
                     "api_key": api_key,
                     "model_name": model_name,
                     "public_name": public_name,
-                    "enabled": str(enabled).lower()
+                    "enabled": str(enabled).lower(),
+                    "available_on_4321": str(available_on_4321).lower(),
+                    "available_on_4333": str(available_on_4333).lower()
                 }
                 
                 validation_result = validate_config_form_data(form_data, existing_config)
@@ -300,6 +310,8 @@ class WebApp:
                 config.model_name = model_name
                 config.public_name = public_name or model_name
                 config.enabled = enabled
+                config.available_on_4321 = available_on_4321
+                config.available_on_4333 = available_on_4333
                 
                 # Save configuration
                 if self.config_service.save_llm_config(config):

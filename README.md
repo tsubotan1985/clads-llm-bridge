@@ -5,7 +5,10 @@
 ## 🚀 主な機能
 
 - **設定用Web UI** (ポート 4322): 複数のLLMサービス設定を管理
-- **LLMプロキシサーバー** (ポート 4321): OpenAI互換APIエンドポイント
+- **デュアルプロキシエンドポイント**:
+  - **一般エンドポイント** (ポート 4321): 一般モデルへのアクセス
+  - **特別エンドポイント** (ポート 4333): 全モデルへのフルアクセス
+- **エンドポイント別モデル管理**: ダッシュボードで各モデルの公開エンドポイントを個別に設定可能
 - **モニタリングダッシュボード**: 使用統計、クライアント/モデルランキング
 - **Dockerサポート**: 永続データストレージによる簡単なデプロイメント
 - **リアルタイム設定反映**: Web UI設定変更の即座反映機能
@@ -65,6 +68,7 @@ docker build -t clads-llm-bridge .
 docker run -d \
   -p 4321:4321 \
   -p 4322:4322 \
+  -p 4333:4333 \
   -v clads_data:/app/data \
   --name clads-llm-bridge \
   clads-llm-bridge
@@ -83,10 +87,20 @@ python main.py
 ## 🔗 アクセス方法
 
 - **設定UI**: http://localhost:4322
-- **プロキシAPI**: http://localhost:4321
+- **一般プロキシAPI**: http://localhost:4321 (限定モデル)
+- **特別プロキシAPI**: http://localhost:4333 (全モデル)
 - **デフォルトパスワード**: llm-bridge
 
 ## 📡 APIアクセス詳細ガイド
+
+### 🎯 デュアルエンドポイントアーキテクチャ
+
+CLADS LLM Bridgeは2つの独立したプロキシエンドポイントを提供します：
+
+- **一般エンドポイント (ポート 4321)**: ダッシュボードで4321に有効化されたモデルのみアクセス可能
+- **特別エンドポイント (ポート 4333)**: ダッシュボードで4333に有効化されたモデルにアクセス可能（通常は全モデル）
+
+これにより、異なるアクセスレベルを持つクライアントに対して、適切なモデルのみを公開できます。
 
 ### 🎯 基本APIエンドポイント
 
@@ -94,8 +108,14 @@ CLADS LLM Bridgeは標準的なOpenAI APIと完全互換性があります。
 
 #### 1. 利用可能なモデル一覧の取得
 
+**一般エンドポイント:**
 ```bash
 curl -X GET http://localhost:4321/v1/models
+```
+
+**特別エンドポイント:**
+```bash
+curl -X GET http://localhost:4333/v1/models
 ```
 
 **レスポンス例：**
@@ -127,6 +147,7 @@ curl -X GET http://localhost:4321/v1/models
 
 #### 2. チャット補完（非ストリーミング）
 
+**一般エンドポイント（限定モデル）:**
 ```bash
 curl -X POST http://localhost:4321/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -166,6 +187,23 @@ curl -X POST http://localhost:4321/v1/chat/completions \
     "total_tokens": 31
   }
 }
+```
+
+**特別エンドポイント（全モデル）:**
+```bash
+curl -X POST http://localhost:4333/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-3-opus",
+    "messages": [
+      {
+        "role": "user",
+        "content": "Advanced query requiring full access"
+      }
+    ],
+    "max_tokens": 100,
+    "temperature": 0.7
+  }'
 ```
 
 #### 3. ストリーミングチャット補完
@@ -215,8 +253,14 @@ curl -X POST http://localhost:4321/v1/completions \
 
 #### システムヘルス確認
 
+**一般エンドポイント:**
 ```bash
 curl -X GET http://localhost:4321/health
+```
+
+**特別エンドポイント:**
+```bash
+curl -X GET http://localhost:4333/health
 ```
 
 **レスポンス例：**
@@ -256,11 +300,17 @@ curl -X GET http://localhost:4321/health/services
 ```python
 import openai
 
-# CLADS LLM Bridgeを指すようにベースURLを設定
+# 一般エンドポイントを使用（限定モデル）
 client = openai.OpenAI(
     base_url="http://localhost:4321/v1",
     api_key="dummy-key"  # APIキーは不要ですが、ライブラリの要求により設定
 )
+
+# または特別エンドポイントを使用（全モデル）
+# client = openai.OpenAI(
+#     base_url="http://localhost:4333/v1",
+#     api_key="dummy-key"
+# )
 
 # チャット補完の使用
 response = client.chat.completions.create(
@@ -435,10 +485,13 @@ APIはHTTP標準ステータスコードを使用します：
 1. **http://localhost:4322** にアクセス
 2. デフォルトパスワード「llm-bridge」でログイン
 3. LLMサービスの追加・編集・削除
-4. モデル設定のテスト
-5. 使用統計の確認
-6. **リアルタイム設定更新**: 設定変更は即座にプロキシサーバーに反映
-7. **手動リロード機能**: 「Reload Config」ボタンで強制的に設定を再読み込み
+4. **エンドポイント別公開設定**: 各モデルを4321/4333のどちらのエンドポイントで公開するか選択
+   - 📡 4321: 一般エンドポイント
+   - 🔓 4333: 特別エンドポイント（フルアクセス）
+5. モデル設定のテスト
+6. 使用統計の確認
+7. **リアルタイム設定更新**: 設定変更は即座に両プロキシサーバーに反映
+8. **手動リロード機能**: 「Reload Config」ボタンで強制的に設定を再読み込み
 
 ### ⚡ 設定反映機能
 
@@ -541,7 +594,9 @@ curl -X POST http://localhost:4321/v1/chat/completions \
 | 変数名 | デフォルト値 | 説明 |
 |--------|-------------|------|
 | `WEB_UI_PORT` | `4322` | 設定用Web UIのポート |
-| `PROXY_PORT` | `4321` | LLMプロキシサーバーのポート |
+| `PROXY_PORT_GENERAL` | `4321` | 一般プロキシサーバーのポート |
+| `PROXY_PORT_SPECIAL` | `4333` | 特別プロキシサーバーのポート |
+| `PROXY_PORT` | `4321` | レガシー互換性用（PROXY_PORT_GENERALと同じ） |
 | `LOG_LEVEL` | `INFO` | ログレベル (DEBUG, INFO, WARNING, ERROR) |
 | `INITIAL_PASSWORD` | `llm-bridge` | 初期管理者パスワード |
 | `DATA_DIR` | `data` | データディレクトリ |
@@ -603,6 +658,7 @@ clads-llm-bridge/
    # ポート使用状況を確認
    lsof -i :4321
    lsof -i :4322
+   lsof -i :4333
    ```
 
 2. **データベース権限エラー**
@@ -613,25 +669,34 @@ clads-llm-bridge/
    ```
 
 3. **設定変更が反映されない**
-   - **Web UI右上の「Reload Config」ボタンをクリック**
+   - **Web UI右上の「Reload Config」ボタンをクリック**（両エンドポイントを更新）
    - または手動でAPIを呼び出し：
      ```bash
+     # 一般エンドポイントをリロード
      curl -X POST http://localhost:4321/admin/reload
+     
+     # 特別エンドポイントをリロード
+     curl -X POST http://localhost:4333/admin/reload
      ```
-   - 設定保存/削除時は自動的にリロードされます
+   - 設定保存/削除時は両エンドポイントが自動的にリロードされます
 
-4. **Gemini (Google AI Studio) 接続エラー**
+4. **モデルが特定のエンドポイントで利用できない**
+   - Web UI (http://localhost:4322) でモデル設定を確認
+   - 該当モデルの編集画面で、目的のエンドポイント（📡 4321 または 🔓 4333）が有効になっているか確認
+   - 少なくとも1つのエンドポイントは有効化する必要があります
+
+5. **Gemini (Google AI Studio) 接続エラー**
    - APIキーが正しく設定されているか確認
    - Google AI Studio（Vertex AIではない）のAPIキーを使用
    - モデル名は `gemini-2.5-pro` や `gemini-2.5-flash` を使用
    - 地域制限やレート制限を確認
 
-5. **上流APIエラー**
+6. **上流APIエラー**
    - 設定UI (http://localhost:4322) でAPI設定をテスト
    - APIキーの有効性を確認
    - レート制限やクォータを確認
 
-6. **メモリ不足**
+7. **メモリ不足**
    ```bash
    # Dockerコンテナのリソース使用量を確認
    docker stats clads-llm-bridge

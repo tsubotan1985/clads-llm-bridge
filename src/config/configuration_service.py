@@ -66,14 +66,26 @@ class ConfigurationService:
             List of LLMConfig objects
         """
         rows = self.db.execute_query("""
-            SELECT id, service_type, base_url, api_key, model_name, 
-                   public_name, enabled, created_at, updated_at
+            SELECT id, service_type, base_url, api_key, model_name,
+                   public_name, enabled, available_on_4321, available_on_4333,
+                   created_at, updated_at
             FROM llm_configs
             ORDER BY created_at ASC
         """)
         
         configs = []
         for row in rows:
+            # Handle optional endpoint columns with try-except
+            try:
+                available_on_4321 = bool(row['available_on_4321'])
+            except (KeyError, IndexError):
+                available_on_4321 = True
+            
+            try:
+                available_on_4333 = bool(row['available_on_4333'])
+            except (KeyError, IndexError):
+                available_on_4333 = True
+            
             config_data = {
                 'id': row['id'],
                 'service_type': row['service_type'],
@@ -82,6 +94,8 @@ class ConfigurationService:
                 'model_name': row['model_name'],
                 'public_name': row['public_name'],
                 'enabled': bool(row['enabled']),
+                'available_on_4321': available_on_4321,
+                'available_on_4333': available_on_4333,
                 'created_at': row['created_at'],
                 'updated_at': row['updated_at']
             }
@@ -99,8 +113,9 @@ class ConfigurationService:
             LLMConfig object or None if not found
         """
         rows = self.db.execute_query("""
-            SELECT id, service_type, base_url, api_key, model_name, 
-                   public_name, enabled, created_at, updated_at
+            SELECT id, service_type, base_url, api_key, model_name,
+                   public_name, enabled, available_on_4321, available_on_4333,
+                   created_at, updated_at
             FROM llm_configs
             WHERE id = ?
         """, (config_id,))
@@ -109,6 +124,18 @@ class ConfigurationService:
             return None
         
         row = rows[0]
+        
+        # Handle optional endpoint columns with try-except
+        try:
+            available_on_4321 = bool(row['available_on_4321'])
+        except (KeyError, IndexError):
+            available_on_4321 = True
+        
+        try:
+            available_on_4333 = bool(row['available_on_4333'])
+        except (KeyError, IndexError):
+            available_on_4333 = True
+        
         config_data = {
             'id': row['id'],
             'service_type': row['service_type'],
@@ -117,6 +144,8 @@ class ConfigurationService:
             'model_name': row['model_name'],
             'public_name': row['public_name'],
             'enabled': bool(row['enabled']),
+            'available_on_4321': available_on_4321,
+            'available_on_4333': available_on_4333,
             'created_at': row['created_at'],
             'updated_at': row['updated_at']
         }
@@ -157,9 +186,10 @@ class ConfigurationService:
             if exists:
                 # Update existing config
                 self.db.execute_update("""
-                    UPDATE llm_configs 
-                    SET service_type = ?, base_url = ?, api_key = ?, 
-                        model_name = ?, public_name = ?, enabled = ?, 
+                    UPDATE llm_configs
+                    SET service_type = ?, base_url = ?, api_key = ?,
+                        model_name = ?, public_name = ?, enabled = ?,
+                        available_on_4321 = ?, available_on_4333 = ?,
                         updated_at = ?
                     WHERE id = ?
                 """, (
@@ -169,16 +199,19 @@ class ConfigurationService:
                     config.model_name,
                     config.public_name,
                     config.enabled,
+                    config.available_on_4321,
+                    config.available_on_4333,
                     config.updated_at.isoformat(),
                     config.id
                 ))
             else:
                 # Insert new config
                 self.db.execute_update("""
-                    INSERT INTO llm_configs 
-                    (id, service_type, base_url, api_key, model_name, 
-                     public_name, enabled, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO llm_configs
+                    (id, service_type, base_url, api_key, model_name,
+                     public_name, enabled, available_on_4321, available_on_4333,
+                     created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     config.id,
                     config.service_type.value,
@@ -187,6 +220,8 @@ class ConfigurationService:
                     config.model_name,
                     config.public_name,
                     config.enabled,
+                    config.available_on_4321,
+                    config.available_on_4333,
                     config.created_at.isoformat(),
                     config.updated_at.isoformat()
                 ))
